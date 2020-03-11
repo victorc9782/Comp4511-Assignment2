@@ -14,24 +14,28 @@
 
 extern char **environ; /* defined by libc */
 /* function prototypes */
+int interupted = 0;
 void eval(char *cmdline);
 int parseline(char *buf, char **argv);
 int builtin_command(char **argv);
+void interuptHandler(int signal);
 
 int main()
 {
-    char cmdline[MAXLINE]; /* Command line */
+    char cmdline[MAXLINE] = ""; /* Command line */
+    signal(SIGINT, interuptHandler); 
 
     while (1)
     {
         char currentWholeDir[MAXLINE];
         char currentDir[MAXLINE];
+        interupted = 0;
         if (getcwd(currentWholeDir, sizeof(currentWholeDir)) != NULL) {
             if (strcmp(currentWholeDir, "/") == 0){
                 strcpy(currentDir, "/");
             }
             else if (strcmp(currentWholeDir,getenv("HOME")) == 0){
-                strcpy(currentDir, "HOME");
+                strcpy(currentDir, "~");
             }
             else{
                 //strcpy(currentDir, currentWholeDir);
@@ -48,15 +52,24 @@ int main()
             return 1;
         }
 	    printf("[%s]> ", currentDir); /* Read */
-	    fgets(cmdline, MAXLINE, stdin);
-	    if (feof(stdin))
-        {
-	        exit(0);
+        fgets(cmdline, MAXLINE, stdin);
+        if (strcmp(cmdline,"\n")==0){
+            continue;
         }
-	    eval(cmdline); /* Evaluate */
+        if (!interupted){
+            if (feof(stdin))
+            {
+                exit(0);
+            }
+            eval(cmdline); /* Evaluate */
+        }
     }
 }
 
+void interuptHandler(int signal){
+    printf("\nUse exit\n");
+    interupted = 1;
+}
 /* Evaluate a command line */
 void eval(char *cmdline)
 {
@@ -65,14 +78,17 @@ void eval(char *cmdline)
     int bg;              /* Should the job run in bg or fg? */
     pid_t pid;           /* Process id */
 
+    if (cmdline == NULL){
+        return;
+    }
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
     if (argv[0] == NULL)
     {
 	    return;   /* Ignore empty lines */
     }
-
-    if (!builtin_command(argv))
+    int buildCommandResult = builtin_command(argv);
+    if (!buildCommandResult)
     {
 	    if ((pid = fork()) == 0) /* Child runs user job */
         {            
@@ -101,6 +117,24 @@ void eval(char *cmdline)
             printf("%d %s", pid, cmdline);
         }
     }
+    else{
+        if (buildCommandResult == 2){
+            if (argv[1] != NULL){
+                chdir(argv[1]);
+            }
+            else{
+                char homeDir[MAXLINE] = "";
+                strcpy(homeDir,getenv("HOME"));
+                if (homeDir==""){
+                    perror("No Home Defined in Env\n");
+                    exit(-1);
+                }
+                else{
+                    chdir(homeDir);
+                }
+            }
+        }
+    }
     return;
 }
 
@@ -115,6 +149,10 @@ int builtin_command(char **argv)
     {
         return 1;
     }
+    if (!strcmp(argv[0], "cd"))
+    {
+        return 2;
+    }
     return 0; /* Not a builtin command */
 }
 
@@ -124,13 +162,18 @@ int parseline(char *buf, char **argv)
     int bg = 0;
     int count = 0;
     char *argvBuf = strtok(buf, "\n"); 
-    argvBuf = strtok(argvBuf, " "); 
+    argvBuf = strtok(argvBuf, " \t"); 
     while (argvBuf!=NULL && count<MAXARGS ){
         argv[count] = (char*)malloc(MAXLINE*sizeof(char));
         strcpy(argv[count], argvBuf);
         //printf("cmd1's buf: %s\n", buf);
         count++;
-        argvBuf = strtok(NULL, " "); 
+        argvBuf = strtok(NULL, " \t"); 
+    }
+    if (strcmp(argv[count-1], "&") == 0){
+        printf("Run Background\n");
+        argv[count-1] = (char*)NULL;
+        bg = 1;
     }
     //execvp(argv[0], argv);
     return bg;
