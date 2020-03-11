@@ -24,7 +24,30 @@ int main()
 
     while (1)
     {
-	    printf("> "); /* Read */
+        char currentWholeDir[MAXLINE];
+        char currentDir[MAXLINE];
+        if (getcwd(currentWholeDir, sizeof(currentWholeDir)) != NULL) {
+            if (strcmp(currentWholeDir, "/") == 0){
+                strcpy(currentDir, "/");
+            }
+            else if (strcmp(currentWholeDir,getenv("HOME")) == 0){
+                strcpy(currentDir, "HOME");
+            }
+            else{
+                //strcpy(currentDir, currentWholeDir);
+                char *buf = strtok(currentWholeDir, "/"); 
+                while (buf!=NULL){
+                    //printf("%s\n", buf);
+                    strcpy(currentDir, buf);
+                    buf = strtok(NULL, "/"); 
+                }
+            }
+        } 
+        else{
+            perror("getcwd() error");
+            return 1;
+        }
+	    printf("[%s]> ", currentDir); /* Read */
 	    fgets(cmdline, MAXLINE, stdin);
 	    if (feof(stdin))
         {
@@ -37,7 +60,7 @@ int main()
 /* Evaluate a command line */
 void eval(char *cmdline)
 {
-    char *argv[MAXARGS]; /* Argument list execve() */
+    char **argv = (char**)malloc(MAXARGS*sizeof(char*)); /* Argument list execve() */
     char buf[MAXLINE];   /* Holds modified command line */
     int bg;              /* Should the job run in bg or fg? */
     pid_t pid;           /* Process id */
@@ -52,9 +75,13 @@ void eval(char *cmdline)
     if (!builtin_command(argv))
     {
 	    if ((pid = fork()) == 0) /* Child runs user job */
-        {
-            if (execve(argv[0], argv, environ) < 0)
+        {            
+            int errnum;
+            //if (execve(argv[0], argv, environ) < 0)
+            if (execvp(argv[0], argv) < 0)
             {
+                //errnum = errno;
+                //fprintf(stderr, "Error opening file: %s\n", strerror( errnum ));
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
             }
@@ -94,7 +121,18 @@ int builtin_command(char **argv)
 /* Parse the command line and build the argv array */
 int parseline(char *buf, char **argv)
 {
-
+    int bg = 0;
+    int count = 0;
+    char *argvBuf = strtok(buf, "\n"); 
+    argvBuf = strtok(argvBuf, " "); 
+    while (argvBuf!=NULL && count<MAXARGS ){
+        argv[count] = (char*)malloc(MAXLINE*sizeof(char));
+        strcpy(argv[count], argvBuf);
+        //printf("cmd1's buf: %s\n", buf);
+        count++;
+        argvBuf = strtok(NULL, " "); 
+    }
+    //execvp(argv[0], argv);
     return bg;
 }
 
