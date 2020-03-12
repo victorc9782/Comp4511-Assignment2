@@ -23,7 +23,6 @@ void handler(int signal);
 int addChildProcess(pid_t pid,char *cmdline );
 int removeChildProcess(pid_t pid);
 void printChildProcess();
-void printRemoveProcess();
 typedef struct{
    pid_t pid;
    char cmdline[MAXLINE];
@@ -84,7 +83,8 @@ void handler(int signal){
     int childPid = 0;
     switch(signal){
         case SIGINT:
-            printf("\nUse exit\n");
+            printf("\n");
+            printf("Use exit\n");
             interupted = 1;
             break;
         case SIGCHLD:
@@ -145,7 +145,7 @@ void eval(char *cmdline)
         }
         else
         {
-            printf("%d %s", pid, cmdline);
+            //printf("%d %s", pid, cmdline);
             int addProcessError = addChildProcess(pid, cmdline);
             if (!addProcessError){
                 printf("Error in adding process\n");
@@ -172,14 +172,10 @@ void eval(char *cmdline)
                         chdir(homeDir);
                     }
                 }
-            }else if (buildCommandResult == 3){
+            }
+            else if (buildCommandResult == 3){
                 printChildProcess();
             }
-            /*
-            else if (buildCommandResult == 4){
-                printRemoveProcess();
-            }
-            */
         }
     }
     return;
@@ -242,9 +238,8 @@ int addChildProcess(pid_t pid,char *cmdline ){
     }
     childProcessList[childProcessCounter].pid = pid;
     strcpy(childProcessList[childProcessCounter].cmdline, cmdline);
-    printf("Added %d %s",childProcessList[childProcessCounter].pid, childProcessList[childProcessCounter].cmdline);
+    //printf("Added %d %s",childProcessList[childProcessCounter].pid, childProcessList[childProcessCounter].cmdline);
     childProcessCounter++;
-    printChildProcess();
 }
 int removeChildProcess(pid_t pid){
     int i = 0;
@@ -279,7 +274,7 @@ int removeChildProcess(pid_t pid){
 }
 void printChildProcess(){
     if (childProcessCounter < 1){
-        printf("No child Process is running\n");
+        printf("No background process is running\n");
         return;
     }
     int i = 0;
@@ -289,16 +284,3 @@ void printChildProcess(){
     }
     return;
 }
-void printRemoveProcess(){
-    if (childRemoveCounter < 1){
-        printf("No child needed to remove\n");
-        return;
-    }
-    int i = 0;
-    while (i<childRemoveCounter){
-        printf("[%d] %d %s", i, childRemoveList[i].pid,  childRemoveList[i].cmdline);
-        i++;
-    }
-    return;
-}
-
