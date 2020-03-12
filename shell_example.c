@@ -11,6 +11,7 @@
 
 #define MAXARGS 128
 #define MAXLINE 8192
+#define MAXCHILD 256
 
 extern char **environ; /* defined by libc */
 /* function prototypes */
@@ -18,12 +19,25 @@ int interupted = 0;
 void eval(char *cmdline);
 int parseline(char *buf, char **argv);
 int builtin_command(char **argv);
-void interuptHandler(int signal);
+void handler(int signal);
+int addChildProcess(pid_t pid,char *cmdline );
+int removeChildProcess(pid_t pid);
+void printChildProcess();
+void printRemoveProcess();
+typedef struct{
+   pid_t pid;
+   char cmdline[MAXLINE];
+} childProcess ;
+childProcess childProcessList[MAXCHILD];
+int childProcessCounter = 0;
+childProcess childRemoveList[MAXCHILD];
+int childRemoveCounter = 0;
 
 int main()
 {
     char cmdline[MAXLINE] = ""; /* Command line */
-    signal(SIGINT, interuptHandler); 
+    signal(SIGINT, handler); 
+    signal(SIGCHLD, handler); 
 
     while (1)
     {
@@ -66,9 +80,20 @@ int main()
     }
 }
 
-void interuptHandler(int signal){
-    printf("\nUse exit\n");
-    interupted = 1;
+void handler(int signal){
+    int childPid = 0;
+    switch(signal){
+        case SIGINT:
+            printf("\nUse exit\n");
+            interupted = 1;
+            break;
+        case SIGCHLD:
+            while( childPid= waitpid(-1, NULL, WNOHANG), childPid > 0){
+                //printf("Collected Child Signal: %d", childPid);
+                removeChildProcess(childPid);
+            }
+            break;
+    }
 }
 /* Evaluate a command line */
 void eval(char *cmdline)
@@ -94,6 +119,12 @@ void eval(char *cmdline)
         {            
             int errnum;
             //if (execve(argv[0], argv, environ) < 0)
+            if (bg){
+                int fd = open("/dev/null", O_WRONLY);
+                dup2(fd, 1);    /* make stdout a copy of fd (> /dev/null) */
+                dup2(fd, 2);    /* ...and same with stderr */
+                close(fd);  
+            }
             if (execvp(argv[0], argv) < 0)
             {
                 //errnum = errno;
@@ -102,9 +133,9 @@ void eval(char *cmdline)
                 exit(0);
             }
         }
-        /* Parent waits for foreground job to terminate */
         if (!bg)
         {
+            /* Parent waits for foreground job to terminate */
             int status;
             if (waitpid(pid, &status, 0) < 0)
             {
@@ -115,24 +146,40 @@ void eval(char *cmdline)
         else
         {
             printf("%d %s", pid, cmdline);
+            int addProcessError = addChildProcess(pid, cmdline);
+            if (!addProcessError){
+                printf("Error in adding process\n");
+            }
         }
     }
     else{
-        if (buildCommandResult == 2){
-            if (argv[1] != NULL){
-                chdir(argv[1]);
+        if (!bg){
+            if (buildCommandResult == -1){
+                exit(0);
             }
-            else{
-                char homeDir[MAXLINE] = "";
-                strcpy(homeDir,getenv("HOME"));
-                if (homeDir==""){
-                    perror("No Home Defined in Env\n");
-                    exit(-1);
+            if (buildCommandResult == 2){
+                if (argv[1] != NULL){
+                    chdir(argv[1]);
                 }
                 else{
-                    chdir(homeDir);
+                    char homeDir[MAXLINE] = "";
+                    strcpy(homeDir,getenv("HOME"));
+                    if (homeDir==""){
+                        perror("No Home Defined in Env\n");
+                        exit(-1);
+                    }
+                    else{
+                        chdir(homeDir);
+                    }
                 }
+            }else if (buildCommandResult == 3){
+                printChildProcess();
             }
+            /*
+            else if (buildCommandResult == 4){
+                printRemoveProcess();
+            }
+            */
         }
     }
     return;
@@ -143,7 +190,7 @@ int builtin_command(char **argv)
 {
     if (!strcmp(argv[0], "exit")) /* exit command */
     {
-        exit(0);
+        return -1;
     }
     if (!strcmp(argv[0], "&"))
     {
@@ -153,6 +200,16 @@ int builtin_command(char **argv)
     {
         return 2;
     }
+    if  (!strcmp(argv[0], "jobs"))
+    {
+        return 3;
+    }
+    /*
+    if  (!strcmp(argv[0], "debug"))
+    {
+        return 4;
+    }
+    */
     return 0; /* Not a builtin command */
 }
 
@@ -171,7 +228,6 @@ int parseline(char *buf, char **argv)
         argvBuf = strtok(NULL, " \t"); 
     }
     if (strcmp(argv[count-1], "&") == 0){
-        printf("Run Background\n");
         argv[count-1] = (char*)NULL;
         bg = 1;
     }
@@ -179,4 +235,70 @@ int parseline(char *buf, char **argv)
     return bg;
 }
 
+int addChildProcess(pid_t pid,char *cmdline ){
+    if (childProcessCounter>=(MAXCHILD-1)){
+        printf("Cannot child process handler full.\n");
+        return -1;
+    }
+    childProcessList[childProcessCounter].pid = pid;
+    strcpy(childProcessList[childProcessCounter].cmdline, cmdline);
+    printf("Added %d %s",childProcessList[childProcessCounter].pid, childProcessList[childProcessCounter].cmdline);
+    childProcessCounter++;
+    printChildProcess();
+}
+int removeChildProcess(pid_t pid){
+    int i = 0;
+    int found = 0;
+    //printf ("Target: %d\n", pid);
+    while (i<childProcessCounter && !found){
+        //printf("Searching [%d] %d %s", i, childProcessList[i].pid, childProcessList[i].cmdline);
+        if (childProcessList[i].pid == pid){
+            /*
+            printf("Found removeChildProcess %d\n",pid);
+            //DEBUG
+            childRemoveList[childRemoveCounter].pid = childProcessList[i].pid;
+            strcpy(childRemoveList[childRemoveCounter].cmdline, childProcessList[i].cmdline);
+            childRemoveCounter++;
+            //DEBUG END
+            */
+
+            int j = i;
+            while (j<(childProcessCounter-1)){
+                childProcessList[j].pid = childProcessList[j+1].pid;
+                strcpy(childProcessList[j].cmdline, childProcessList[j+1].cmdline);
+                j++;
+            }
+            childProcessList[childProcessCounter-1].pid = 0;
+            strcpy(childProcessList[childProcessCounter-1].cmdline, "");
+            childProcessCounter--;
+            found = 1;
+        }
+        i++;
+    }
+    return found;
+}
+void printChildProcess(){
+    if (childProcessCounter < 1){
+        printf("No child Process is running\n");
+        return;
+    }
+    int i = 0;
+    while (i<childProcessCounter){
+        printf("[%d] %d %s", i, childProcessList[i].pid,  childProcessList[i].cmdline);
+        i++;
+    }
+    return;
+}
+void printRemoveProcess(){
+    if (childRemoveCounter < 1){
+        printf("No child needed to remove\n");
+        return;
+    }
+    int i = 0;
+    while (i<childRemoveCounter){
+        printf("[%d] %d %s", i, childRemoveList[i].pid,  childRemoveList[i].cmdline);
+        i++;
+    }
+    return;
+}
 
