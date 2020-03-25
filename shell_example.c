@@ -214,9 +214,81 @@ int builtin_command(char **argv)
 int parseline(char *buf, char **argv)
 {
     int bg = 0;
+    //char *argvBuf = strtok(buf, "\n");
+    //argvBuf = strtok(argvBuf, " \t"); 
+    //https://stackoverflow.com/questions/9659697/parse-string-into-array-based-on-spaces-or-double-quotes-strings
+    int state = 0; //0: Null, 1: in normal word, 2: in double-quote
+    char *readPointer, *startPointer;
+    int charTmp;
     int count = 0;
-    char *argvBuf = strtok(buf, "\n");
-    argvBuf = strtok(argvBuf, " \t"); 
+
+     for (readPointer = buf; count < MAXARGS && *readPointer != '\0'; readPointer++) {
+        //printf("readPointer: %s\n",readPointer);
+        charTmp= (unsigned char) *readPointer;
+        switch (state) {
+        case 0:
+            if (isspace(charTmp)) {
+                continue;
+            }
+
+            if (charTmp== '"') {
+                state = 2;
+                startPointer = readPointer + 1; 
+                continue;
+            }
+            else if (charTmp== '\'') {
+                state = 3;
+                startPointer = readPointer + 1; 
+                continue;
+            }
+            state = 1;
+            startPointer = readPointer;
+            continue;
+
+        case 1:
+            //printf("chartmp: %c\n",charTmp);
+            if  (charTmp== '\"') {
+                //printf("\" is found\n");
+                removeSingleSymbol(startPointer,sizeof(startPointer),readPointer-startPointer);
+            }
+            if  (charTmp== '\'') {
+                //printf("\' is found\n");
+                removeSingleSymbol(startPointer,sizeof(startPointer),readPointer-startPointer);
+            }
+            if (isspace(charTmp)) {
+                *readPointer = 0;
+                argv[count] = startPointer;
+                count++;
+                state = 0;
+            }
+            continue;
+        
+        
+        case 2:
+            if (charTmp== '"') {
+                *readPointer = 0;
+                argv[count] = startPointer;
+                count++;
+                state = 0;
+            }
+            continue;
+        case 3:
+            if (charTmp== '\'') {
+                *readPointer = 0;
+                argv[count] = startPointer;
+                count++;
+                state = 0;
+            }
+            continue;
+        }
+
+    }
+     if (state != 0 && count < MAXARGS){
+         printf("startPointer: %s",startPointer);
+        argv[count] = startPointer;
+        count++;
+     }
+    /*
     while (argvBuf!=NULL && count<MAXARGS ){
         argv[count] = (char*)malloc(MAXLINE*sizeof(char));
         strcpy(argv[count], argvBuf);
@@ -224,6 +296,7 @@ int parseline(char *buf, char **argv)
         count++;
         argvBuf = strtok(NULL, " \t"); 
     }
+    */
     if (strcmp(argv[count-1], "&") == 0){
         argv[count-1] = (char*)NULL;
         bg = 1;
