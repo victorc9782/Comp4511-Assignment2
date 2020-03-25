@@ -20,6 +20,7 @@ void eval(char *cmdline);
 int parseline(char *buf, char **argv);
 int builtin_command(char **argv);
 void handler(int signal);
+void removeSingleSymbol(char *line, int lineSize, int removePos);
 int addChildProcess(pid_t pid,char *cmdline );
 int removeChildProcess(pid_t pid);
 void printChildProcess();
@@ -214,7 +215,7 @@ int parseline(char *buf, char **argv)
 {
     int bg = 0;
     int count = 0;
-    char *argvBuf = strtok(buf, "\n"); 
+    char *argvBuf = strtok(buf, "\n");
     argvBuf = strtok(argvBuf, " \t"); 
     while (argvBuf!=NULL && count<MAXARGS ){
         argv[count] = (char*)malloc(MAXLINE*sizeof(char));
@@ -230,7 +231,14 @@ int parseline(char *buf, char **argv)
     //execvp(argv[0], argv);
     return bg;
 }
-
+void removeSingleSymbol(char *line, int lineSize, int removePos){
+    int i = removePos;
+    while (i<lineSize){
+        line[i] = line[i+1];
+        i++;
+    }
+    return;
+}
 int addChildProcess(pid_t pid,char *cmdline ){
     if (childProcessCounter>=(MAXCHILD-1)){
         printf("Cannot child process handler full.\n");
